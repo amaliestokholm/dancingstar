@@ -13,6 +13,7 @@ const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 4000);
 camera.position.set(0, 0, 300);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.sortObjects = true;
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
@@ -32,7 +33,7 @@ scene.add(new THREE.AmbientLight(0x888888));
 const skyGeometry = new THREE.SphereGeometry(1000, 64, 64);
 const loader = new THREE.TextureLoader();
 const skyMaterial = new THREE.MeshBasicMaterial({
-  map: loader.load('/assets/night-sky.png'),
+  map: loader.load('assets/night-sky.png'),
   side: THREE.BackSide,
   depthWrite: false
 });
@@ -53,12 +54,30 @@ const material = new THREE.ShaderMaterial({
     phase: { value: new Float32Array(MAX_MODES) },
     Omega: { value: 0.3 },
     Cnl: { value: 0.03 },
+    shellRadius: {value: 1 },
     enableCutaway: { value: false },
+    invertCutaway: { value: false },
     cutDir: { value: new THREE.Vector3(1, 0, 0) },
     cutAngle: { value: Math.PI / 6 }
   },
   vertexShader,
   fragmentShader
+});
+material.uniforms.shellRadius.value = 1.0;
+material.transparent = true;
+material.opacity = 1.0;
+material.depthWrite = true;
+material.side = THREE.DoubleSide;
+
+// Add these listeners to catch shader errors
+material.onBeforeCompile = (shader) => {
+  console.log('Vertex Shader:', shader.vertexShader);
+  console.log('Fragment Shader:', shader.fragmentShader);
+};
+
+// After first render, check:
+renderer.info.programs.forEach(program => {
+  console.log('Program diagnostics:', program.diagnostics);
 });
 
 // Create star group for rotating elements
@@ -68,7 +87,33 @@ scene.add(starGroup);
 // Sphere
 const sphereGeo = new THREE.SphereGeometry(100, 256, 256);
 const sphere = new THREE.Mesh(sphereGeo, material);
+// sphere.renderOrder = 10;
 starGroup.add(sphere);
+
+// Inner shells
+const oscillationMaterials = [];
+oscillationMaterials.push(material);
+
+const shellRadii = [0.95, 0.85, 0.75, 0.65, 0.55];
+const shells = [];
+
+shellRadii.forEach((rFrac, index) => {
+  const geo = new THREE.SphereGeometry(100 * rFrac, 256, 256);
+
+  const shellMat = material.clone();
+  shellMat.uniforms.shellRadius.value = rFrac;
+  shellMat.uniforms.invertCutaway.value = true; 
+  shellMat.transparent = true;
+  shellMat.opacity = 0.9;
+  shellMat.depthWrite = false;
+
+  oscillationMaterials.push(shellMat);
+
+  const mesh = new THREE.Mesh(geo, shellMat);
+  // mesh.renderOrder = index;
+  shells.push(mesh);
+  starGroup.add(mesh);
+});
 
 // Sliders
 const nSlider = document.getElementById('n');
@@ -91,19 +136,22 @@ const modes = [
 function uploadModes() {
   const activeModes = modes.filter(m => m.enabled);
 
-  material.uniforms.nModes.value = activeModes.length;
-
-  activeModes.forEach((mode, i) => {
-    material.uniforms.n.value[i] = mode.n;
-    material.uniforms.l.value[i] = mode.l;
-    material.uniforms.m.value[i] = mode.m;
-    material.uniforms.amp.value[i] = mode.amp;
-    material.uniforms.omega0.value[i] = mode.omega;
-    material.uniforms.phase.value[i] = mode.phase;
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.nModes.value = activeModes.length;
+    
+    activeModes.forEach((mode, i) => {
+      mat.uniforms.n.value[i] = mode.n;
+      mat.uniforms.l.value[i] = mode.l;
+      mat.uniforms.m.value[i] = mode.m;
+      mat.uniforms.amp.value[i] = mode.amp;
+      mat.uniforms.omega0.value[i] = mode.omega;
+      mat.uniforms.phase.value[i] = mode.phase;
+    });
   });
   updateModeList();
-  material.uniforms.enableCutaway.value =
-    document.getElementById('cutawayToggle').checked;
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.enableCutaway.value = document.getElementById('cutawayToggle').checked;
+  });
 }
 
 
@@ -117,7 +165,9 @@ function updateMode() {
     phase: 0.0,
     enabled: true
   };
-  material.uniforms.Omega.value = +rotSlider.value;
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.Omega.value = +rotSlider.value;
+  });
   uploadModes();
 }
 
@@ -155,7 +205,7 @@ function updateModeList() {
 
     const label = document.createElement('span');
     label.style.marginLeft = '6px';
-    const mSign = mode.m >= 0 ? '+' : '−';
+    const mSign = mode.m >= 0 ? '+' : '-';
     label.textContent =
       `Mode ${i + 1}: n=${mode.n}, ℓ=${mode.l}, m=${mSign}${Math.abs(mode.m)}, ` +
       `A=${mode.amp.toFixed(2)}, ω=${mode.omega.toFixed(2)}`;
@@ -274,13 +324,26 @@ starGroup.add(axisArrow);
 
 // Cone cut-away
 document.getElementById('cutawayToggle').onchange = e => {
-  material.uniforms.enableCutaway.value = e.target.checked;
+  const cutawayEnabled = e.target.checked;
+  
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.enableCutaway.value = cutawayEnabled;
+  });
+  
+  // Hide/show inner shells based on cutaway state
+  shells.forEach(shell => {
+    shell.visible = cutawayEnabled;
+  });
+
+  sphere.visible = true;
 };
 
 document.getElementById('cutAngle').oninput = e => {
   const angle = +e.target.value;
   cutAngleVal.textContent = angle;
-  material.uniforms.cutAngle.value = THREE.MathUtils.degToRad(angle);
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.cutAngle.value = THREE.MathUtils.degToRad(angle);
+  });
 };
 
 // Initialize
@@ -290,7 +353,9 @@ updateSliderDisplay();
 
 // Animation loop
 function animate() {
-  material.uniforms.time.value += 0.02;
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.time.value += 0.02;
+  });
   starGroup.rotation.y += 0.001;
 
   controls.update();

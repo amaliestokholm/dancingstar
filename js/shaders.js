@@ -17,7 +17,13 @@ uniform float phase[MAX_MODES];
 uniform float Omega;   // rotation rate
 uniform float Cnl;     // Ledoux constant
 
+uniform bool enableCutaway;
+uniform bool invertCutaway;
+uniform vec3 cutDir;     // normalized units
+uniform float cutAngle;  // radians
+
 varying float vDisp;
+varying vec3 vDir;
 
 /* ---------- Math utilities ---------- */
 
@@ -99,18 +105,12 @@ float splitFrequency(float omega, int m, float Omega, float Cnl) {
   return omega + float(m) * Omega * (1.0 - Cnl);
 }
 
-uniform bool enableCutaway;
-uniform vec3 cutDir;     // normalized units
-uniform float cutAngle;  // radians
-
-
-
 /* ---------- main ---------- */
 
 void main() {
   vec3 pos = position;
   float r = length(pos);
-  float rNorm = r / 100.0; // normalize to sphere radius
+  float rNorm = r / 100.0;
 
   float theta = acos(pos.z / r);
   float phi = atan(pos.y, pos.x);
@@ -120,7 +120,6 @@ void main() {
   for (int i = 0; i < MAX_MODES; i++) {
     if (i >= nModes) break;
 
-    // cast floats to int for Ylm and splitting
     int n_i = int(n[i]);
     int l_i = int(l[i]);
     int m_i = int(m[i]);
@@ -139,30 +138,42 @@ void main() {
   // Exaggerate radial displacement
   pos *= (r + 5.0 * dr) / r;
 
+  vDir = normalize(pos);
+
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-
-  vec3 dir = normalize(pos);
-  float ang = acos(dot(dir, normalize(cutDir)));
-
-  if (enableCutaway && ang < cutAngle) {
-    gl_Position = vec4(0.0);
-    return;
-}
-
-
 }
 `;
 
 export const fragmentShader = `
+uniform bool enableCutaway;
+uniform bool invertCutaway;
+uniform vec3 cutDir;
+uniform float cutAngle;
+
+varying vec3 vDir;
 varying float vDisp;
 
 void main() {
-  // brightness floor to ensure visible sphere
-  float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
+if (enableCutaway) {
+    float ang = acos(clamp(dot(vDir, cutDir), -1.0, 1.0));
+    float edge = smoothstep(cutAngle - 0.05, cutAngle + 0.05, ang);
 
+    // Inverted logic for inner shells
+    if (invertCutaway) {
+      if (edge > 0.5) discard;  // Keep ONLY the cone
+    } else {
+      if (edge < 0.5) discard;  // Remove the cone
+    }
+  }
+
+  float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
   vec3 inward  = vec3(0.2, 0.3, 0.9);
   vec3 outward = vec3(1.0, 0.4, 0.1);
+  // vec3 inward  = vec3(0.1, 0.2, 0.7);
+  // vec3 outward = vec3(1.0, 0.9, 0.4);
+
   vec3 color = mix(inward, outward, x);
+
   gl_FragColor = vec4(color, 1.0);
 }
 `;
