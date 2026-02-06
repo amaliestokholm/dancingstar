@@ -94,24 +94,32 @@ starGroup.add(sphere);
 const oscillationMaterials = [];
 oscillationMaterials.push(material);
 
-const shellRadii = [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05];
-const shells = [];
+const planes = [];
+const planeAngles = [0, 60, 120];
+const planeDepth = 200;
 
-shellRadii.forEach((rFrac, index) => {
-  const geo = new THREE.SphereGeometry(100 * rFrac, 256, 256);
+planeAngles.forEach((angleDeg, index) => {
+  const angle = THREE.MathUtils.degToRad(angleDeg);
 
-  const shellMat = material.clone();
-  shellMat.uniforms.shellRadius.value = rFrac;
-  shellMat.uniforms.invertCutaway.value = true; 
-  shellMat.transparent = true;
-  shellMat.opacity = 0.9;
-  shellMat.depthWrite = false;
+  // Create a plane geometry
+  const planeGeo = new THREE.PlaneGeometry(planeDepth, planeDepth, 256, 256);
 
-  oscillationMaterials.push(shellMat);
+  const planeMat = material.clone();
+  planeMat.uniforms.shellRadius.value = 0.5; // Middle radius for sampling
+  planeMat.uniforms.invertCutaway.value = true;
+  planeMat.transparent = true;
+  planeMat.opacity = 0.85;
+  planeMat.depthWrite = false;
+  planeMat.side = THREE.DoubleSide;
 
-  const mesh = new THREE.Mesh(geo, shellMat);
-  // mesh.renderOrder = index;
-  shells.push(mesh);
+  oscillationMaterials.push(planeMat);
+
+  const mesh = new THREE.Mesh(planeGeo, planeMat);
+
+  // Rotate plane to create triangular wedge
+  mesh.rotation.y = angle;
+
+  planes.push(mesh);
   starGroup.add(mesh);
 });
 
@@ -121,11 +129,15 @@ const lSlider = document.getElementById('l');
 const mSlider = document.getElementById('m');
 const ampSlider = document.getElementById('amp');
 const rotSlider = document.getElementById('rot');
+const starRotSlider = document.getElementById('starRot');
+const oscSpeedSlider = document.getElementById('oscSpeed');
 const nVal = document.getElementById('nVal');
 const lVal = document.getElementById('lVal');
 const mVal = document.getElementById('mVal');
 const ampVal = document.getElementById('ampVal');
 const rotVal = document.getElementById('rotVal');
+const starRotVal = document.getElementById('starRotVal');
+const oscSpeedVal = document.getElementById('oscSpeedVal');
 const cutAngleVal = document.getElementById('cutAngleVal');
 const modeItems = document.getElementById('modeItems');
 
@@ -185,6 +197,8 @@ function updateSliderDisplay() {
   mVal.textContent = mSlider.value;
   rotVal.textContent = (+rotSlider.value).toFixed(2);
   ampVal.textContent = (+ampSlider.value).toFixed(2);
+  starRotVal.textContent = (+starRotSlider.value).toFixed(4);
+  oscSpeedVal.textContent = (+oscSpeedSlider.value).toFixed(2);
 }
 
 // Update mode list display
@@ -238,6 +252,18 @@ lSlider.addEventListener('input', () => {
     updateSliderDisplay();
   })
 );
+
+starRotSlider.addEventListener('input', () => {
+  updateSliderDisplay();
+});
+
+oscSpeedSlider.addEventListener('input', () => {
+  oscillationMaterials.forEach(mat => {
+    mat.uniforms.oscSpeed.value = +oscSpeedSlider.value;
+  });
+  updateSliderDisplay();
+});
+
 
 document.getElementById('addMode').onclick = () => {
   if (modes.length >= MAX_MODES) return;
@@ -330,10 +356,11 @@ document.getElementById('cutawayToggle').onchange = e => {
     mat.uniforms.enableCutaway.value = cutawayEnabled;
   });
   
-  // Hide/show inner shells based on cutaway state
-  shells.forEach(shell => {
-    shell.visible = cutawayEnabled;
-  });
+  // Hide/show inner planes based on cutaway state
+  planes.forEach(plane => {
+    plane.visible = cutawayEnabled;
+  }); 
+
 
   sphere.visible = true;
 };
@@ -356,7 +383,8 @@ function animate() {
   oscillationMaterials.forEach(mat => {
     mat.uniforms.time.value += 0.02;
   });
-  starGroup.rotation.y += 0.001;
+  starRotationSpeed = +starRotSlider.value;
+  starGroup.rotation.y += starRotationSpeed;
 
   controls.update();
   renderer.render(scene, camera);

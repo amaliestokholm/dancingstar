@@ -4,6 +4,7 @@ export const vertexShader = `
 #define PI 3.14159265359
 
 uniform float time;
+uniform float oscSpeed;
 uniform int nModes;
 
 // Using float arrays for safety; will cast to int inside GLSL
@@ -21,9 +22,11 @@ uniform bool enableCutaway;
 uniform bool invertCutaway;
 uniform vec3 cutDir;     // normalized units
 uniform float cutAngle;  // radians
+uniform float rimWidth;
 
 varying float vDisp;
 varying vec3 vDir;
+varying float vAngle;
 
 /* ---------- Math utilities ---------- */
 
@@ -130,7 +133,7 @@ void main() {
     float Y_lm = Ylm(l_i, m_i, theta, phi);
 
     dr += amp[i] * R_nl * Y_lm *
-	  cos(omega * time + phase[i]);
+	  cos(omega * time * oscSpeed + phase[i]);
   }
 
   vDisp = dr;
@@ -139,6 +142,7 @@ void main() {
   pos *= (r + 5.0 * dr) / r;
 
   vDir = normalize(pos);
+  vAngle = acos(clamp(dot(vDir, cutDir), -1.0, 1.0));
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -149,16 +153,27 @@ uniform bool enableCutaway;
 uniform bool invertCutaway;
 uniform vec3 cutDir;
 uniform float cutAngle;
+uniform float rimWidth;
 
 varying vec3 vDir;
 varying float vDisp;
+varying float vAngle;
 
 void main() {
-if (enableCutaway) {
-    float ang = acos(clamp(dot(vDir, cutDir), -1.0, 1.0));
+  bool isRim = false;
+  
+  if (enableCutaway) {
+    float ang = vAngle;
+    
+    // Check if we're near the edge for rim effect
+    float distToEdge = abs(ang - cutAngle);
+    if (distToEdge < rimWidth) {
+      isRim = true;
+    }
+    
     float edge = smoothstep(cutAngle - 0.05, cutAngle + 0.05, ang);
 
-    // Inverted logic for inner shells
+    // Inverted logic for inner planes
     if (invertCutaway) {
       if (edge > 0.5) discard;  // Keep ONLY the cone
     } else {
@@ -166,13 +181,18 @@ if (enableCutaway) {
     }
   }
 
-  float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
-  vec3 inward  = vec3(0.2, 0.3, 0.9);
-  vec3 outward = vec3(1.0, 0.4, 0.1);
-  // vec3 inward  = vec3(0.1, 0.2, 0.7);
-  // vec3 outward = vec3(1.0, 0.9, 0.4);
-
-  vec3 color = mix(inward, outward, x);
+  vec3 color;
+  
+  if (isRim) {
+    // Black rim at the cutaway edge
+    color = vec3(0.0, 0.0, 0.0);
+  } else {
+    // Normal oscillation coloring
+    float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
+    vec3 inward  = vec3(0.2, 0.3, 0.9);
+    vec3 outward = vec3(1.0, 0.4, 0.1);
+    color = mix(inward, outward, x);
+  }
 
   gl_FragColor = vec4(color, 1.0);
 }
