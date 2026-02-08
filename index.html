@@ -21,8 +21,10 @@
       margin: 8px 0;
     }
     #controls input[type="range"] {
+      display: block;
       width: 150px;
-      margin-left: 10px;
+      margin-top: 6px;
+      margin-left: 0;
     }
     #controls button {
       margin: 5px 5px 5px 0;
@@ -53,12 +55,31 @@
       padding: 3px 0;
       color: #aaddff;
     }
+    #toggleControls {
+      position: absolute;
+      top: 5px;
+      right: -20px;
+      width: 20px;
+      height: 40px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border: none;
+      border-radius: 0 5px 5px 0;
+      cursor: pointer;
+    }
+    #controls.collapsed {
+      transform: translateX(-90%);
+    }
+    #controls {
+      transition: transform 0.3s ease;
+    }
   </style>
 </head>
 <body>
 <div id="globeViz"></div>
 
 <div id="controls">
+	<button id="toggleControls">&lt;</button>
   <label>
     <input type="checkbox" id="toggleEquator" checked> Show grid
   </label>
@@ -101,6 +122,15 @@
 </div>
 
 <script type="module" src="js/main.js"></script>
+<script>
+  const controls = document.getElementById("controls");
+  const toggle = document.getElementById("toggleControls");
+
+  toggle.addEventListener("click", () => {
+    controls.classList.toggle("collapsed");
+	  toggle.textContent = controls.classList.contains("collapsed") ? ">" : "<";
+  });
+</script>
 </body>
 </html>
 
