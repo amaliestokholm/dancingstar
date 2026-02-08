@@ -17,16 +17,16 @@ uniform float phase[MAX_MODES];
 
 uniform float Omega;   // rotation rate
 uniform float Cnl;     // Ledoux constant
+uniform float shellRadius;
 
 uniform bool enableCutaway;
-uniform bool invertCutaway;
-uniform vec3 cutDir;     // normalized units
-uniform float cutAngle;  // radians
-uniform float rimWidth;
+uniform vec3 cutDir;
 
 varying float vDisp;
 varying vec3 vDir;
 varying float vAngle;
+varying vec3 vWorldPos;
+varying float vSphereRadius;
 
 /* ---------- Math utilities ---------- */
 
@@ -115,8 +115,9 @@ void main() {
   float r = length(pos);
   float rNorm = r / 100.0;
 
-  float theta = acos(pos.z / r);
-  float phi = atan(pos.y, pos.x);
+  // Y is the polar axis (north-south), XZ is the equatorial plane
+  float theta = acos(pos.y / r);  // Angle from north pole (Y-axis)
+  float phi = atan(pos.z, pos.x); // Azimuthal angle in XZ plane
 
   float dr = 0.0;
 
@@ -141,8 +142,12 @@ void main() {
   // Exaggerate radial displacement
   pos *= (r + 5.0 * dr) / r;
 
+  vWorldPos = pos; // Store world position for clipping
   vDir = normalize(pos);
   vAngle = acos(clamp(dot(vDir, cutDir), -1.0, 1.0));
+  
+  // Calculate the sphere's radius at this direction (for plane clipping)
+  vSphereRadius = 100.0 + 5.0 * dr;  // Base radius + exaggerated displacement
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -150,49 +155,80 @@ void main() {
 
 export const fragmentShader = `
 uniform bool enableCutaway;
-uniform bool invertCutaway;
 uniform vec3 cutDir;
-uniform float cutAngle;
-uniform float rimWidth;
+uniform float shellRadius;
 
 varying vec3 vDir;
 varying float vDisp;
 varying float vAngle;
+varying vec3 vWorldPos;
+varying float vSphereRadius;
 
 void main() {
-  bool isRim = false;
+  // Check if this is a plane (shellRadius < 1) or the main sphere (shellRadius = 1)
+  bool isPlane = shellRadius < 0.99;
   
-  if (enableCutaway) {
-    float ang = vAngle;
+  // For planes: clip to oscillating spherical boundary and wedge region
+  // Planes are flat, so vWorldPos is the true flat position
+  if (isPlane) {
+    float distFromCenter = length(vWorldPos);
     
-    // Check if we're near the edge for rim effect
-    float distToEdge = abs(ang - cutAngle);
-    if (distToEdge < rimWidth) {
-      isRim = true;
+    // vSphereRadius is the oscillating sphere radius at this point's direction
+    // Clip if plane extends beyond the oscillating sphere
+    if (distFromCenter > vSphereRadius) {
+      discard;
     }
     
-    float edge = smoothstep(cutAngle - 0.05, cutAngle + 0.05, ang);
-
-    // Inverted logic for inner planes
-    if (invertCutaway) {
-      if (edge > 0.5) discard;  // Keep ONLY the cone
-    } else {
-      if (edge < 0.5) discard;  // Remove the cone
+    // Clip to wedge region
+    // Y is polar axis, XZ is equatorial plane
+    
+    // Check if above equator (northern hemisphere)
+    bool aboveEquator = vWorldPos.y > -2.0;
+    
+    // Calculate azimuthal angle in XZ plane
+    float phi = atan(vWorldPos.z, vWorldPos.x);
+    if (phi < 0.0) phi += 6.28318530718; // Normalize to 0 to 2π
+    
+    bool nearPhi0 = abs(vWorldPos.z) < 2.0 && vWorldPos.x > 0.0;
+    bool nearPhi90 = abs(vWorldPos.x) < 2.0 && vWorldPos.z > 0.0;
+    
+    // Check if within 90-degree azimuthal range - generous tolerance
+    // phi=0 is at 0, phi=90deg is at π/2 ≈ 1.5708
+    bool inAzimuthRange = nearPhi0 || nearPhi90 || (phi >= -0.15 && phi <= 1.72);
+    
+    // Discard if outside the wedge region
+    if (!aboveEquator || !inAzimuthRange) {
+      discard;
+    }
+  }
+  
+  // For the main sphere: cut a wedge-shaped hole
+  if (enableCutaway && !isPlane) {
+    // The wedge is defined by:
+    // 1. Above the equatorial plane (Y > 0, northern hemisphere)
+    // 2. Within 90 degrees azimuthally (0deg to 90 in XZ plane)
+    
+    // Check if above equator
+    bool aboveEquator = vDir.y > 0.0;
+    
+    // Calculate azimuthal angle in XZ plane
+    float phi = atan(vDir.z, vDir.x);
+    if (phi < 0.0) phi += 6.28318530718; // Normalize to 0 to 2π
+    
+    // Check if within 90-degree azimuthal range
+    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708); // 0 to π/2 (90 degrees)
+    
+    // If both conditions met, this is inside the wedge hole - discard it
+    if (aboveEquator && inAzimuthRange) {
+      discard;
     }
   }
 
-  vec3 color;
-  
-  if (isRim) {
-    // Black rim at the cutaway edge
-    color = vec3(0.0, 0.0, 0.0);
-  } else {
-    // Normal oscillation coloring
-    float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
-    vec3 inward  = vec3(0.2, 0.3, 0.9);
-    vec3 outward = vec3(1.0, 0.4, 0.1);
-    color = mix(inward, outward, x);
-  }
+  // Normal oscillation coloring
+  float x = 0.5 + 0.5 * tanh(3.0 * vDisp);
+  vec3 inward  = vec3(0.2, 0.3, 0.9);
+  vec3 outward = vec3(1.0, 0.4, 0.1);
+  vec3 color = mix(inward, outward, x);
 
   gl_FragColor = vec4(color, 1.0);
 }
