@@ -104,7 +104,6 @@ equatorialMat.uniforms.shellRadius.value = 0.5;  // Mark as plane
 oscillationMaterials.push(equatorialMat);
 
 const equatorialPlane = new THREE.Mesh(equatorialGeo, equatorialMat);
-// Default plane is XY, rotate to XZ
 equatorialPlane.rotation.x = Math.PI / 2;
 equatorialPlane.visible = false;
 planes.push(equatorialPlane);
@@ -416,84 +415,40 @@ const axisArrow = new THREE.ArrowHelper(
 );
 starGroup.add(axisArrow);
 
-// Wedge edge lines
-// We'll create them as thin spherical geometry that gets clipped by shader
 const edgeGroup = new THREE.Group();
 starGroup.add(edgeGroup);
 
-// Create thin tube geometries for wedge edges that will oscillate with the sphere
-const edgeMaterial = material.clone();
-edgeMaterial.uniforms.shellRadius.value = 1.0; // On surface
-edgeMaterial.uniforms.enableCutaway.value = false;
-
-// Create a custom fragment shader that renders black but keeps oscillation
-const blackFragmentShader = `
-uniform bool enableCutaway;
-uniform vec3 cutDir;
-uniform float shellRadius;
-
-varying vec3 vDir;
-varying float vDisp;
-varying float vAngle;
-varying vec3 vWorldPos;
-varying float vSphereRadius;
-
-void main() {
-  gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Always black
-}
-`;
-
-const blackEdgeMaterial = new THREE.ShaderMaterial({
-  uniforms: edgeMaterial.uniforms,
-  vertexShader: vertexShader,
-  fragmentShader: blackFragmentShader,
-  side: THREE.DoubleSide
+const edgeLineMaterial = new THREE.LineBasicMaterial({
+  color: 0x000000,
+  linewidth: 2
 });
 
-// Edge 1: Equatorial arc
-const equatorialEdgePoints = [];
-for (let angle = 0; angle <= Math.PI / 2; angle += 0.02) {
-  equatorialEdgePoints.push(new THREE.Vector3(
-    100 * Math.cos(angle),  // X
-    0,                       // Y = 0 (equator)
-    100 * Math.sin(angle)   // Z
-  ));
-}
-const equatorialEdgeCurve = new THREE.CatmullRomCurve3(equatorialEdgePoints);
-const equatorialEdgeGeo = new THREE.TubeGeometry(equatorialEdgeCurve, 64, 0.5, 8, false);
-const equatorialEdgeMesh = new THREE.Mesh(equatorialEdgeGeo, blackEdgeMaterial);
-equatorialEdgeMesh.visible = false;
-edgeGroup.add(equatorialEdgeMesh);
+const numEdgePoints = 100;
 
-// Edge 2: Meridional arc at phi=0 (north pole to equator along +X, contains Y-axis)
-const meridional1EdgePoints = [];
-for (let theta = 0; theta <= Math.PI / 2; theta += 0.02) {
-  meridional1EdgePoints.push(new THREE.Vector3(
-    100 * Math.sin(theta),  // X varies
-    100 * Math.cos(theta),  // Y: from 100 (north) to 0 (equator)
-    0                        // Z = 0 (phi = 0)
-  ));
-}
-const meridional1EdgeCurve = new THREE.CatmullRomCurve3(meridional1EdgePoints);
-const meridional1EdgeGeo = new THREE.TubeGeometry(meridional1EdgeCurve, 64, 0.5, 8, false);
-const meridional1EdgeMesh = new THREE.Mesh(meridional1EdgeGeo, blackEdgeMaterial);
-meridional1EdgeMesh.visible = false;
-edgeGroup.add(meridional1EdgeMesh);
+// Edge 1: Equatorial arc (from phi=0 to phi=90 at y=0)
+const equatorialEdgeGeo = new THREE.BufferGeometry();
+const equatorialEdgePositions = new Float32Array(numEdgePoints * 3);
+equatorialEdgeGeo.setAttribute('position', new THREE.BufferAttribute(equatorialEdgePositions, 3));
+const equatorialEdgeLine = new THREE.Line(equatorialEdgeGeo, edgeLineMaterial);
+equatorialEdgeLine.visible = false;
+edgeGroup.add(equatorialEdgeLine);
 
-// Edge 3: Meridional arc at phi=90 (north pole to equator along +Z, contains Y-axis)
-const meridional2EdgePoints = [];
-for (let theta = 0; theta <= Math.PI / 2; theta += 0.02) {
-  meridional2EdgePoints.push(new THREE.Vector3(
-    0,                       // X = 0 (phi = 90)
-    100 * Math.cos(theta),  // Y: from 100 (north) to 0 (equator)
-    100 * Math.sin(theta)   // Z varies
-  ));
-}
-const meridional2EdgeCurve = new THREE.CatmullRomCurve3(meridional2EdgePoints);
-const meridional2EdgeGeo = new THREE.TubeGeometry(meridional2EdgeCurve, 64, 0.5, 8, false);
-const meridional2EdgeMesh = new THREE.Mesh(meridional2EdgeGeo, blackEdgeMaterial);
-meridional2EdgeMesh.visible = false;
-edgeGroup.add(meridional2EdgeMesh);
+// Edge 2: Meridional arc at phi=0 (from north pole to equator)
+const meridional1EdgeGeo = new THREE.BufferGeometry();
+const meridional1EdgePositions = new Float32Array(numEdgePoints * 3);
+meridional1EdgeGeo.setAttribute('position', new THREE.BufferAttribute(meridional1EdgePositions, 3));
+const meridional1EdgeLine = new THREE.Line(meridional1EdgeGeo, edgeLineMaterial);
+meridional1EdgeLine.visible = false;
+edgeGroup.add(meridional1EdgeLine);
+
+// Edge 3: Meridional arc at phi=90 (from north pole to equator)
+const meridional2EdgeGeo = new THREE.BufferGeometry();
+const meridional2EdgePositions = new Float32Array(numEdgePoints * 3);
+meridional2EdgeGeo.setAttribute('position', new THREE.BufferAttribute(meridional2EdgePositions, 3));
+const meridional2EdgeLine = new THREE.Line(meridional2EdgeGeo, edgeLineMaterial);
+meridional2EdgeLine.visible = false;
+edgeGroup.add(meridional2EdgeLine);
+
 
 // Intersection lines
 const intersectionMaterial = new THREE.LineBasicMaterial({
@@ -503,32 +458,198 @@ const intersectionMaterial = new THREE.LineBasicMaterial({
   opacity: 0.7
 });
 
-const xAxisPoints = [
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(100, 0, 0)  // Along +X in equatorial plane
-];
-const xAxisGeo = new THREE.BufferGeometry().setFromPoints(xAxisPoints);
+const xAxisGeo = new THREE.BufferGeometry();
+const xAxisPositions = new Float32Array(2 * 3);
+xAxisGeo.setAttribute('position', new THREE.BufferAttribute(xAxisPositions, 3));
 const xAxisLine = new THREE.Line(xAxisGeo, intersectionMaterial);
 xAxisLine.visible = false;
 edgeGroup.add(xAxisLine);
 
-const zAxisPoints = [
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, 100)  // Along +Z in equatorial plane
-];
-const zAxisGeo = new THREE.BufferGeometry().setFromPoints(zAxisPoints);
+const zAxisGeo = new THREE.BufferGeometry();
+const zAxisPositions = new Float32Array(2 * 3);
+zAxisGeo.setAttribute('position', new THREE.BufferAttribute(zAxisPositions, 3));
 const zAxisLine = new THREE.Line(zAxisGeo, intersectionMaterial);
 zAxisLine.visible = false;
 edgeGroup.add(zAxisLine);
 
-const yAxisPoints = [
-  new THREE.Vector3(0, 0, 0),      // Center/equator
-  new THREE.Vector3(0, 100, 0)     // North pole
-];
-const yAxisGeo = new THREE.BufferGeometry().setFromPoints(yAxisPoints);
+const yAxisGeo = new THREE.BufferGeometry();
+const yAxisPositions = new Float32Array(2 * 3);
+yAxisGeo.setAttribute('position', new THREE.BufferAttribute(yAxisPositions, 3));
 const yAxisLine = new THREE.Line(yAxisGeo, intersectionMaterial);
 yAxisLine.visible = false;
 edgeGroup.add(yAxisLine);
+
+// Function to calculate displacement at a given position
+function calculateDisplacement(position) {
+  const dir = new THREE.Vector3(position.x, position.y, position.z).normalize();
+  const rRadial = position.length();
+  const rNorm = rRadial / 100.0;
+
+  const theta = Math.acos(Math.max(-1, Math.min(1, dir.y)));
+  const phi = Math.atan2(dir.z, dir.x);
+
+  let dr = 0.0;
+  const activeModes = modes.filter(m => m.enabled);
+  const currentTime = material.uniforms.time.value;
+  const oscSpeed = material.uniforms.oscSpeed.value;
+  const Omega = material.uniforms.Omega.value;
+  const Cnl = material.uniforms.Cnl.value;
+
+  for (const mode of activeModes) {
+    const omega = mode.omega + mode.m * Omega * (1.0 - Cnl);
+    const R_nl = Math.sin((mode.n + 0.5) * Math.PI * rNorm);
+    const Y_lm = calculateSphericalHarmonic(mode.l, mode.m, theta, phi);
+    dr += mode.amp * R_nl * Y_lm * Math.cos(omega * currentTime * oscSpeed + mode.phase);
+  }
+
+  return dr;
+}
+
+function factorial(n) {
+  let f = 1.0;
+  for (let i = 1; i <= n; i++) {
+    f *= i;
+  }
+  return f;
+}
+
+function legendreP(l, m, x) {
+  let pmm = 1.0;
+
+  if (m > 0) {
+    const somx2 = Math.sqrt((1.0 - x) * (1.0 + x));
+    let fact = 1.0;
+    for (let i = 1; i <= m; i++) {
+      pmm *= -fact * somx2;
+      fact += 2.0;
+    }
+  }
+  if (l === m) return pmm;
+
+  let pmmp1 = x * (2.0 * m + 1.0) * pmm;
+  if (l === m + 1) return pmmp1;
+
+  let pll = 0.0;
+  for (let ll = m + 2; ll <= l; ll++) {
+    pll = ((2.0 * ll - 1.0) * x * pmmp1 - (ll + m - 1) * pmm) / (ll - m);
+    pmm = pmmp1;
+    pmmp1 = pll;
+  }
+
+  return pll;
+}
+
+function norm(l, m) {
+  return Math.sqrt(
+    (2.0 * l + 1.0) / (4.0 * Math.PI) *
+    factorial(l - m) / factorial(l + m)
+  );
+}
+
+// Simplified spherical harmonic calculation (Y_0^0 and Y_2^0 for common modes)
+function calculateSphericalHarmonic(l, m, theta, phi) {
+  const x = Math.cos(theta);
+  const mm = Math.abs(m);
+
+  const P = legendreP(l, mm, x);
+  const N = norm(l, mm);
+
+  if (m > 0) {
+    return Math.sqrt(2.0) * N * P * Math.cos(mm * phi);
+  } else if (m < 0) {
+    return Math.sqrt(2.0) * N * P * Math.sin(mm * phi);
+  } else {
+    return N * P;
+  }
+}
+
+// Function to update edge line positions
+function updateEdgeLines() {
+  // Edge 1: Equatorial arc from phi=0 to phi=90
+  const eqPositions = equatorialEdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const angle = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const basePos = new THREE.Vector3(
+      100 * Math.cos(angle),
+      0,
+      100 * Math.sin(angle)
+    );
+    const dr = calculateDisplacement(basePos);
+    const dir = basePos.clone().normalize();
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+
+    eqPositions[i * 3] = newPos.x;
+    eqPositions[i * 3 + 1] = newPos.y;
+    eqPositions[i * 3 + 2] = newPos.z;
+  }
+  equatorialEdgeGeo.attributes.position.needsUpdate = true;
+
+  // Edge 2: Meridional arc at phi=0 (north pole to equator)
+  const m1Positions = meridional1EdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const theta = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const basePos = new THREE.Vector3(
+      100 * Math.sin(theta),
+      100 * Math.cos(theta),
+      0
+    );
+    const dr = calculateDisplacement(basePos);
+    const dir = basePos.clone().normalize();
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+
+    m1Positions[i * 3] = newPos.x;
+    m1Positions[i * 3 + 1] = newPos.y;
+    m1Positions[i * 3 + 2] = newPos.z;
+  }
+  meridional1EdgeGeo.attributes.position.needsUpdate = true;
+
+  // Edge 3: Meridional arc at phi=90 (north pole to equator)
+  const m2Positions = meridional2EdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const theta = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const basePos = new THREE.Vector3(
+      0,
+      100 * Math.cos(theta),
+      100 * Math.sin(theta)
+    );
+    const dr = calculateDisplacement(basePos);
+    const dir = basePos.clone().normalize();
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+
+    m2Positions[i * 3] = newPos.x;
+    m2Positions[i * 3 + 1] = newPos.y;
+    m2Positions[i * 3 + 2] = newPos.z;
+  }
+  meridional2EdgeGeo.attributes.position.needsUpdate = true;
+
+  // Update intersection lines to connect to oscillating surface
+  // X-axis line (from center to equator at phi=0)
+  const xPos = xAxisGeo.attributes.position.array;
+  const xEndBase = new THREE.Vector3(100, 0, 0);
+  const xDr = calculateDisplacement(xEndBase);
+  const xEnd = xEndBase.clone().normalize().multiplyScalar(100 + 5.0 * xDr);
+  xPos[0] = 0; xPos[1] = 0; xPos[2] = 0;
+  xPos[3] = xEnd.x; xPos[4] = xEnd.y; xPos[5] = xEnd.z;
+  xAxisGeo.attributes.position.needsUpdate = true;
+  
+  // Z-axis line (from center to equator at phi=90)
+  const zPos = zAxisGeo.attributes.position.array;
+  const zEndBase = new THREE.Vector3(0, 0, 100);
+  const zDr = calculateDisplacement(zEndBase);
+  const zEnd = zEndBase.clone().normalize().multiplyScalar(100 + 5.0 * zDr);
+  zPos[0] = 0; zPos[1] = 0; zPos[2] = 0;
+  zPos[3] = zEnd.x; zPos[4] = zEnd.y; zPos[5] = zEnd.z;
+  zAxisGeo.attributes.position.needsUpdate = true;
+  
+  // Y-axis line (from center to north pole)
+  const yPos = yAxisGeo.attributes.position.array;
+  const yEndBase = new THREE.Vector3(0, 100, 0);
+  const yDr = calculateDisplacement(yEndBase);
+  const yEnd = yEndBase.clone().normalize().multiplyScalar(100 + 5.0 * yDr);
+  yPos[0] = 0; yPos[1] = 0; yPos[2] = 0;
+  yPos[3] = yEnd.x; yPos[4] = yEnd.y; yPos[5] = yEnd.z;
+  yAxisGeo.attributes.position.needsUpdate = true;
+}
 
 // Wedge cut-away
 document.getElementById('cutawayToggle').onchange = e => {
@@ -565,6 +686,10 @@ function animate() {
   });
   starRotationSpeed = +starRotSlider.value;
   starGroup.rotation.y += starRotationSpeed;
+
+  if (document.getElementById('cutawayToggle').checked) {
+    updateEdgeLines();
+  }
 
   controls.update();
   renderer.render(scene, camera);

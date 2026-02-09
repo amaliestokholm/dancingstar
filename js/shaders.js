@@ -112,12 +112,44 @@ float splitFrequency(float omega, int m, float Omega, float Cnl) {
 
 void main() {
   vec3 pos = position;
-  float r = length(pos);
-  float rNorm = r / 100.0;
+  vec3 dir;
+  float rRadial = length(pos);
+  float rNorm = rRadial / 100.0;
 
-  // Y is the polar axis (north-south), XZ is the equatorial plane
-  float theta = acos(pos.y / r);  // Angle from north pole (Y-axis)
-  float phi = atan(pos.z, pos.x); // Azimuthal angle in XZ plane
+  bool isPlane = shellRadius < 0.9;
+
+  float theta, phi;
+
+
+  if (isPlane) {
+    if (abs(normal.y) > 0.5) {
+      // Equatorial plane (normal along Y)
+      // pos.x and pos.z are cartesian coords in the plane
+      // Convert to spherical coordinates
+      float r_plane = length(vec2(pos.x, pos.z));
+      rRadial = r_plane;
+      rNorm = rRadial / 100.0;
+
+      // phi is the azimuthal angle in the equatorial plane
+      phi = atan(pos.z, pos.x);
+
+      // theta should be pi/2 (equator), with small variation based on r
+      // For points in the equatorial plane, theta = pi/2
+      theta = PI / 2.0;
+
+      dir = normalize(vec3(pos.x, 0.0, pos.z));
+
+    } else {
+      dir = normalize(pos);
+      theta = acos(clamp(dir.y, -1.0, 1.0));
+      phi = atan(dir.z, dir.x);
+    }
+  } else {
+    // Full sphere
+    dir = normalize(pos);
+    theta = acos(clamp(dir.y, -1.0, 1.0));
+    phi = atan(dir.z, dir.x);
+  }
 
   float dr = 0.0;
 
@@ -138,16 +170,15 @@ void main() {
   }
 
   vDisp = dr;
-  // pos *= (r + dr) / r;
-  // Exaggerate radial displacement
-  pos *= (r + 5.0 * dr) / r;
 
-  vWorldPos = pos; // Store world position for clipping
-  vDir = normalize(pos);
-  vAngle = acos(clamp(dot(vDir, cutDir), -1.0, 1.0));
-  
-  // Calculate the sphere's radius at this direction (for plane clipping)
-  vSphereRadius = 100.0 + 5.0 * dr;  // Base radius + exaggerated displacement
+  // Exaggerate radial displacement
+  if (!isPlane) {
+    pos = dir * (rRadial + 5.0 * dr);
+  }
+
+  vWorldPos = pos;
+  vDir = dir;
+  vSphereRadius = 100.0 + 5.0 * dr;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -160,43 +191,26 @@ uniform float shellRadius;
 
 varying vec3 vDir;
 varying float vDisp;
-varying float vAngle;
 varying vec3 vWorldPos;
 varying float vSphereRadius;
 
 void main() {
-  // Check if this is a plane (shellRadius < 1) or the main sphere (shellRadius = 1)
-  bool isPlane = shellRadius < 0.99;
+  // Deternube if this is plane or the main sphere
+  bool isPlane = shellRadius < 0.9;
   
   // For planes: clip to oscillating spherical boundary and wedge region
-  // Planes are flat, so vWorldPos is the true flat position
   if (isPlane) {
-    float distFromCenter = length(vWorldPos);
-    
-    // vSphereRadius is the oscillating sphere radius at this point's direction
-    // Clip if plane extends beyond the oscillating sphere
-    if (distFromCenter > vSphereRadius) {
-      discard;
-    }
-    
-    // Clip to wedge region
-    // Y is polar axis, XZ is equatorial plane
+    if (length(vWorldPos) > vSphereRadius) discard;
     
     // Check if above equator (northern hemisphere)
-    bool aboveEquator = vWorldPos.y > -2.0;
+    bool aboveEquator = vWorldPos.y > 0.0;
     
     // Calculate azimuthal angle in XZ plane
     float phi = atan(vWorldPos.z, vWorldPos.x);
-    if (phi < 0.0) phi += 6.28318530718; // Normalize to 0 to 2π
+    if (phi < 0.0) phi += 6.28318530718;
+
+    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708);
     
-    bool nearPhi0 = abs(vWorldPos.z) < 2.0 && vWorldPos.x > 0.0;
-    bool nearPhi90 = abs(vWorldPos.x) < 2.0 && vWorldPos.z > 0.0;
-    
-    // Check if within 90-degree azimuthal range - generous tolerance
-    // phi=0 is at 0, phi=90deg is at π/2 ≈ 1.5708
-    bool inAzimuthRange = nearPhi0 || nearPhi90 || (phi >= -0.15 && phi <= 1.72);
-    
-    // Discard if outside the wedge region
     if (!aboveEquator || !inAzimuthRange) {
       discard;
     }
@@ -204,21 +218,13 @@ void main() {
   
   // For the main sphere: cut a wedge-shaped hole
   if (enableCutaway && !isPlane) {
-    // The wedge is defined by:
-    // 1. Above the equatorial plane (Y > 0, northern hemisphere)
-    // 2. Within 90 degrees azimuthally (0deg to 90 in XZ plane)
-    
-    // Check if above equator
     bool aboveEquator = vDir.y > 0.0;
     
-    // Calculate azimuthal angle in XZ plane
     float phi = atan(vDir.z, vDir.x);
-    if (phi < 0.0) phi += 6.28318530718; // Normalize to 0 to 2π
+    if (phi < 0.0) phi += 6.28318530718;
     
-    // Check if within 90-degree azimuthal range
-    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708); // 0 to π/2 (90 degrees)
+    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708);
     
-    // If both conditions met, this is inside the wedge hole - discard it
     if (aboveEquator && inAzimuthRange) {
       discard;
     }
