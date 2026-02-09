@@ -126,48 +126,17 @@ void main() {
   vec3 transformedNormal = normalize(mat3(modelMatrix) * normal);
 
   if (isPlane) {
-    if (abs(transformedNormal.y) > 0.5) {
-      // Equatorial plane (normal along Y)
-      // Geometry is PlaneGeometry in local XY coords: (x, y, 0)
-      // After rotation.x = π/2, this becomes (x, 0, y) in world space
-      // But in shader, 'position' is still (x, y, 0) in local space
-      
-      // So we use pos.x and pos.y as the equatorial plane coordinates
-      float r_plane = length(vec2(pos.x, pos.y));
-      
-      rRadial = r_plane;
-      rNorm = r_plane / 100.0;
-      
-      // phi is the azimuthal angle in the XY plane (which becomes XZ in world)
-      phi = atan(pos.y, pos.x);
-      
-      // All points on equatorial plane are at theta = pi/2 (the equator)
-      theta = PI / 2.0;
-      
-      // Direction vector for displacement (radially outward in the plane)
-      if (r_plane > 0.001) {
-        dir = normalize(vec3(pos.x, 0.0, pos.y));
-      } else {
-        dir = vec3(1.0, 0.0, 0.0);
-      }
+  // World-space position of plane point
+  vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
 
-    } else {
-      // Meridional planes (normal along X or Z)
-      // These are slices at constant phi
-      rRadial = length(pos);
-      rNorm = rRadial / 100.0;
-      dir = normalize(pos);
-      theta = acos(clamp(dir.y, -1.0, 1.0));
-      
-      // Determine which meridional plane based on transformed normal
-      if (abs(transformedNormal.z) > 0.5) {
-        // Normal along Z → XY plane → phi = 0 (slice containing +X axis)
-        phi = 0.0;
-      } else {
-        // Normal along X → YZ plane → phi = π/2 (slice containing +Z axis)
-        phi = PI / 2.0;
-      }
-    }
+  rRadial = length(worldPos);
+  rNorm   = rRadial / 100.0;
+
+  // Direction from center – THIS is what spherical harmonics care about
+  dir = normalize(worldPos);
+
+  theta = acos(clamp(dir.y, -1.0, 1.0));
+  phi   = atan(dir.z, dir.x);
   } else {
     // Full sphere
     rRadial = length(pos);

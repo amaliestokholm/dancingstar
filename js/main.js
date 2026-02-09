@@ -436,8 +436,6 @@ starGroup.add(edgeGroup);
 const edgeLineMaterial = new THREE.LineBasicMaterial({
   color: 0x000000,
   linewidth: 2,
-  depthTest: true,
-  depthWrite: false
 });
 
 const numEdgePoints = 100;
