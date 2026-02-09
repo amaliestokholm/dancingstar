@@ -15,6 +15,8 @@ camera.position.set(0, 0, 300);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.sortObjects = true;
 renderer.setSize(width, height);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.logarithmicDepthBuffer = true;
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -82,7 +84,7 @@ const oscillationMaterials = [];
 oscillationMaterials.push(material);
 
 const planes = [];
-const planeDepth = 200;
+const planeDepth = 240;
 
 const planeVertexShader = vertexShader.replace(
   'pos *= (r + 5.0 * dr) / r;',
@@ -96,8 +98,11 @@ const equatorialMat = new THREE.ShaderMaterial({
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
   transparent: true,
-  opacity: 1.0,
-  depthWrite: true,
+  depthWrite: false,
+  depthTest: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
   side: THREE.DoubleSide
 });
 equatorialMat.uniforms.shellRadius.value = 0.5;  // Mark as plane
@@ -106,6 +111,7 @@ oscillationMaterials.push(equatorialMat);
 const equatorialPlane = new THREE.Mesh(equatorialGeo, equatorialMat);
 equatorialPlane.rotation.x = Math.PI / 2;
 equatorialPlane.visible = false;
+equatorialPlane.renderOrder = 1;
 planes.push(equatorialPlane);
 starGroup.add(equatorialPlane);
 
@@ -117,15 +123,19 @@ const meridional1Mat = new THREE.ShaderMaterial({
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
   transparent: true,
-  opacity: 1.0,
-  depthWrite: true,
-  side: THREE.DoubleSide
+  depthWrite: false,
+  depthTest: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
+  side: THREE.FrontSide
 });
 meridional1Mat.uniforms.shellRadius.value = 0.5;
 oscillationMaterials.push(meridional1Mat);
 
 const meridional1Plane = new THREE.Mesh(meridional1Geo, meridional1Mat);
 meridional1Plane.visible = false;
+meridional1Plane.renderOrder = 1;
 planes.push(meridional1Plane);
 starGroup.add(meridional1Plane);
 
@@ -136,8 +146,11 @@ const meridional2Mat = new THREE.ShaderMaterial({
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
   transparent: true,
-  opacity: 1.0,
-  depthWrite: true,
+  depthWrite: false,
+  depthTest: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
   side: THREE.DoubleSide
 });
 meridional2Mat.uniforms.shellRadius.value = 0.5;
@@ -147,6 +160,7 @@ const meridional2Plane = new THREE.Mesh(meridional2Geo, meridional2Mat);
 // Rotate 90deg around Y to get YZ plane (normal along X)
 meridional2Plane.rotation.y = - Math.PI / 2;
 meridional2Plane.visible = false;
+meridional2Plane.renderOrder = 1;
 planes.push(meridional2Plane);
 starGroup.add(meridional2Plane);
 
@@ -416,11 +430,14 @@ const axisArrow = new THREE.ArrowHelper(
 starGroup.add(axisArrow);
 
 const edgeGroup = new THREE.Group();
+edgeGroup.renderOrder = 2;
 starGroup.add(edgeGroup);
 
 const edgeLineMaterial = new THREE.LineBasicMaterial({
   color: 0x000000,
-  linewidth: 2
+  linewidth: 2,
+  depthTest: true,
+  depthWrite: false
 });
 
 const numEdgePoints = 100;
@@ -455,7 +472,9 @@ const intersectionMaterial = new THREE.LineBasicMaterial({
   color: 0x000000,
   linewidth: 1,
   transparent: true,
-  opacity: 0.7
+  opacity: 0.7,
+  depthTest: true,
+  depthWrite: false
 });
 
 const xAxisGeo = new THREE.BufferGeometry();
@@ -478,6 +497,7 @@ yAxisGeo.setAttribute('position', new THREE.BufferAttribute(yAxisPositions, 3));
 const yAxisLine = new THREE.Line(yAxisGeo, intersectionMaterial);
 yAxisLine.visible = false;
 edgeGroup.add(yAxisLine);
+
 
 // Function to calculate displacement at a given position
 function calculateDisplacement(position) {
@@ -576,7 +596,7 @@ function updateEdgeLines() {
     );
     const dr = calculateDisplacement(basePos);
     const dir = basePos.clone().normalize();
-    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr + 0.2);
 
     eqPositions[i * 3] = newPos.x;
     eqPositions[i * 3 + 1] = newPos.y;
@@ -595,7 +615,7 @@ function updateEdgeLines() {
     );
     const dr = calculateDisplacement(basePos);
     const dir = basePos.clone().normalize();
-    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr + 0.2);
 
     m1Positions[i * 3] = newPos.x;
     m1Positions[i * 3 + 1] = newPos.y;
@@ -614,7 +634,7 @@ function updateEdgeLines() {
     );
     const dr = calculateDisplacement(basePos);
     const dir = basePos.clone().normalize();
-    const newPos = dir.multiplyScalar(100 + 5.0 * dr);
+    const newPos = dir.multiplyScalar(100 + 5.0 * dr + 0.2);
 
     m2Positions[i * 3] = newPos.x;
     m2Positions[i * 3 + 1] = newPos.y;

@@ -113,39 +113,65 @@ float splitFrequency(float omega, int m, float Omega, float Cnl) {
 void main() {
   vec3 pos = position;
   vec3 dir;
-  float rRadial = length(pos);
-  float rNorm = rRadial / 100.0;
+  float rRadial;
+  float rNorm;
 
   bool isPlane = shellRadius < 0.9;
 
   float theta, phi;
-
+  
+  // Transform normal using only the model matrix (mesh rotation), not view
+  // normalMatrix includes view matrix and can cause flickering
+  // We only care about the mesh's orientation, not camera view
+  vec3 transformedNormal = normalize(mat3(modelMatrix) * normal);
 
   if (isPlane) {
-    if (abs(normal.y) > 0.5) {
+    if (abs(transformedNormal.y) > 0.5) {
       // Equatorial plane (normal along Y)
-      // pos.x and pos.z are cartesian coords in the plane
-      // Convert to spherical coordinates
-      float r_plane = length(vec2(pos.x, pos.z));
+      // Geometry is PlaneGeometry in local XY coords: (x, y, 0)
+      // After rotation.x = π/2, this becomes (x, 0, y) in world space
+      // But in shader, 'position' is still (x, y, 0) in local space
+      
+      // So we use pos.x and pos.y as the equatorial plane coordinates
+      float r_plane = length(vec2(pos.x, pos.y));
+      
       rRadial = r_plane;
-      rNorm = rRadial / 100.0;
-
-      // phi is the azimuthal angle in the equatorial plane
-      phi = atan(pos.z, pos.x);
-
-      // theta should be pi/2 (equator), with small variation based on r
-      // For points in the equatorial plane, theta = pi/2
+      rNorm = r_plane / 100.0;
+      
+      // phi is the azimuthal angle in the XY plane (which becomes XZ in world)
+      phi = atan(pos.y, pos.x);
+      
+      // All points on equatorial plane are at theta = pi/2 (the equator)
       theta = PI / 2.0;
-
-      dir = normalize(vec3(pos.x, 0.0, pos.z));
+      
+      // Direction vector for displacement (radially outward in the plane)
+      if (r_plane > 0.001) {
+        dir = normalize(vec3(pos.x, 0.0, pos.y));
+      } else {
+        dir = vec3(1.0, 0.0, 0.0);
+      }
 
     } else {
+      // Meridional planes (normal along X or Z)
+      // These are slices at constant phi
+      rRadial = length(pos);
+      rNorm = rRadial / 100.0;
       dir = normalize(pos);
       theta = acos(clamp(dir.y, -1.0, 1.0));
-      phi = atan(dir.z, dir.x);
+      
+      // Determine which meridional plane based on transformed normal
+      if (abs(transformedNormal.z) > 0.5) {
+        // Normal along Z → XY plane → phi = 0 (slice containing +X axis)
+        phi = 0.0;
+      } else {
+        // Normal along X → YZ plane → phi = π/2 (slice containing +Z axis)
+        phi = PI / 2.0;
+      }
     }
   } else {
     // Full sphere
+    rRadial = length(pos);
+    rNorm = rRadial / 100.0;
     dir = normalize(pos);
     theta = acos(clamp(dir.y, -1.0, 1.0));
     phi = atan(dir.z, dir.x);
@@ -171,7 +197,8 @@ void main() {
 
   vDisp = dr;
 
-  // Exaggerate radial displacement
+  // Don't displace the planes - they stay flat
+  // Only displace the sphere
   if (!isPlane) {
     pos = dir * (rRadial + 5.0 * dr);
   }
