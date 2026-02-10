@@ -129,8 +129,6 @@ void main() {
 
   // Get world-space position (includes both plane rotation and starGroup rotation)
   vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
-
-  float phiInertial = atan(worldPos.z, worldPos.x);
   
   // Undo the starGroup Y-axis rotation to get position in star-local frame
   // Rotation matrix for rotation around Y axis by angle theta:
@@ -168,7 +166,7 @@ void main() {
     float R_nl = radialMode(n_i, rNorm);
     // Pattern rotation: the azimuthal pattern drifts at rate proportional to m*Omega
     // In the inertial frame, the pattern appears at phiInertial - m*Omega*time*(1-Cnl)
-    float phiRotating = phiInertial + float(m_i) * Omega * (1.0 - Cnl) * time * oscSpeed;
+    float phiRotating = phi + float(m_i) * Omega * (1.0 - Cnl) * time * oscSpeed;
     float Y_lm = Ylm(l_i, m_i, theta, phiRotating);
 
     dr += amp[i] * R_nl * Y_lm *
