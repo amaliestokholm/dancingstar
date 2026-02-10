@@ -99,7 +99,8 @@ const equatorialMat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: false,
+  transparent: true,
+  opacity: 1.0,
   depthWrite: false,
   depthTest: true,
   polygonOffset: true,
@@ -242,7 +243,7 @@ function updateSliderDisplay() {
   mVal.textContent = mSlider.value;
   rotVal.textContent = (+rotSlider.value).toFixed(2);
   ampVal.textContent = (+ampSlider.value).toFixed(2);
-  starRotVal.textContent = (+starRotSlider.value).toFixed(4);
+  starRotVal.textContent = (+starRotSlider.value).toFixed(2);
   oscSpeedVal.textContent = (+oscSpeedSlider.value).toFixed(2);
 }
 
@@ -709,13 +710,10 @@ function animate() {
     mat.uniforms.starGroupRotationY.value = starGroup.rotation.y;
   });
   
-  const manualRotation = +starRotSlider.value;
-  if (Math.abs(manualRotation) > 0.0001) {
-    starRotationSpeed = manualRotation;
-  } else {
-    const Omega = material.uniforms.Omega.value;
-    starRotationSpeed = Omega * 0.01;
-  }
+  // Visual rotation speed is coupled to stellar rotation (Omega)
+  const Omega = material.uniforms.Omega.value;
+  const visualSpeedMultiplier = +starRotSlider.value;
+  starRotationSpeed = Omega * 0.01 * visualSpeedMultiplier;
   starGroup.rotation.y += starRotationSpeed;
 
   if (document.getElementById('cutawayToggle').checked) {
