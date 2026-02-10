@@ -522,8 +522,11 @@ function calculateDisplacement(position) {
   for (const mode of activeModes) {
     const omega = mode.omega + mode.m * Omega * (1.0 - Cnl);
     const R_nl = Math.sin((mode.n + 0.5) * Math.PI * rNorm);
-    const Y_lm = calculateSphericalHarmonic(mode.l, mode.m, theta, phi);
-    dr += mode.amp * R_nl * Y_lm * Math.cos(omega * currentTime * oscSpeed + mode.phase);
+    //const Y_lm = calculateSphericalHarmonic(mode.l, mode.m, theta, phi);
+    //dr += mode.amp * R_nl * Y_lm * Math.cos(omega * currentTime * oscSpeed + mode.phase);
+    const phiRotating = phi - mode.m * Omega * (1.0 - Cnl) * currentTime * oscSpeed;
+    const Y_lm = calculateSphericalHarmonic(mode.l, mode.m, theta, phiRotating);
+    dr += mode.amp * R_nl * Y_lm * Math.cos(mode.omega * currentTime * oscSpeed + mode.phase);
   }
 
   return dr;
