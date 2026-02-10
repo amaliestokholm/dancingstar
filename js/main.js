@@ -86,7 +86,7 @@ const oscillationMaterials = [];
 oscillationMaterials.push(material);
 
 const planes = [];
-const planeDepth = 240;
+const planeDepth = 260;
 
 const planeVertexShader = vertexShader.replace(
   'pos *= (r + 5.0 * dr) / r;',
@@ -118,20 +118,23 @@ equatorialPlane.renderOrder = 1;
 planes.push(equatorialPlane);
 starGroup.add(equatorialPlane);
 
-// Plane 2 & 3: Two meridional planes showing radial patterns
-// Plane at phi=0deg (XY plane, normal along +Z)
+// Plane first in rotation direction
 const meridional1Geo = new THREE.PlaneGeometry(planeDepth, planeDepth, 256, 256);
 const meridional1Mat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: false,
+  transparent: true,
+  opacity: 1.0,
   depthWrite: false,
   depthTest: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
   side: THREE.DoubleSide
 });
 meridional1Mat.uniforms.shellRadius.value = 0.5;
-meridional1Mat.uniforms.planeType.value = 1;  // Meridional1 plane (XY, no rotation)
+meridional1Mat.uniforms.planeType.value = 1;
 oscillationMaterials.push(meridional1Mat);
 
 const meridional1Plane = new THREE.Mesh(meridional1Geo, meridional1Mat);
@@ -146,17 +149,20 @@ const meridional2Mat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: false,
+  transparent: true,
+  opacity: 1.0,
   depthWrite: false,
   depthTest: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
   side: THREE.DoubleSide
 });
 meridional2Mat.uniforms.shellRadius.value = 0.5;
-meridional2Mat.uniforms.planeType.value = 2;  // Meridional2 plane (YZ, rotated -90° around Y)
+meridional2Mat.uniforms.planeType.value = 2;
 oscillationMaterials.push(meridional2Mat);
 
 const meridional2Plane = new THREE.Mesh(meridional2Geo, meridional2Mat);
-// Rotate 90deg around Y to get YZ plane (normal along +X) at phi=90°
 meridional2Plane.rotation.y = -Math.PI / 2;
 meridional2Plane.visible = false;
 meridional2Plane.renderOrder = 1;
@@ -703,16 +709,12 @@ function animate() {
     mat.uniforms.starGroupRotationY.value = starGroup.rotation.y;
   });
   
-  // Use manual rotation slider if set, otherwise link to Omega
   const manualRotation = +starRotSlider.value;
   if (Math.abs(manualRotation) > 0.0001) {
-    // Manual mode: use slider value
     starRotationSpeed = manualRotation;
   } else {
-    // Automatic mode: link visual rotation to physical rotation rate (Omega)
-    // Scale Omega to a reasonable visual rotation speed
     const Omega = material.uniforms.Omega.value;
-    starRotationSpeed = Omega * 0.01; // Scale factor for visual effect
+    starRotationSpeed = Omega * 0.01;
   }
   starGroup.rotation.y += starRotationSpeed;
 
@@ -726,7 +728,6 @@ function animate() {
 }
 animate();
 
-// Resize handling
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();

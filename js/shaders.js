@@ -202,6 +202,7 @@ export const fragmentShader = `
 uniform bool enableCutaway;
 uniform vec3 cutDir;
 uniform float shellRadius;
+uniform int planeType;
 
 varying vec3 vDir;
 varying float vDisp;
@@ -214,32 +215,35 @@ void main() {
   
   // For planes: clip to oscillating spherical boundary and wedge region
   if (isPlane) {
-    // Use vWorldPos for radius check (it has the oscillating radius)
+    // Clip to the sphere
     if (length(vWorldPos) > vSphereRadius) discard;
-    
-    // Use vDir (local coordinates) for wedge clipping so it rotates with star
-    // Check if above or at equator (northern hemisphere + equator) in LOCAL frame
-    bool aboveEquator = vDir.y >= -0.01;  // Small tolerance for equatorial plane
-    
-    // Calculate azimuthal angle in XZ plane in LOCAL frame
-    float phi = atan(vDir.z, vDir.x);
-    if (phi < 0.0) phi += 6.28318530718;
 
-    bool inAzimuthRange = (phi >= -0.05 && phi <= 1.62);  // Extra tolerance on both sides
-    
-    if (!aboveEquator || !inAzimuthRange) {
-      discard;
+    if (vDir.y < -0.01) discard;
+
+    // meridional1
+    if (planeType == 1) {
+      if (vDir.x < 0.0) discard;
+    }
+
+    // meridional2
+    if (planeType == 2) {
+      if (vDir.z < 0.0) discard;
+    }
+
+    // equatorial
+    if (planeType == 3) {
+      if (vDir.x < 0.0 || vDir.z < 0.0) discard;
     }
   }
   
-  // For the main sphere: cut a wedge-shaped hole
+  // For the main sphere: cut a hole
   if (enableCutaway && !isPlane) {
     bool aboveEquator = vDir.y > 0.0;
     
     float phi = atan(vDir.z, vDir.x);
     if (phi < 0.0) phi += 6.28318530718;
     
-    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708);
+    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.57079632679);
     
     if (aboveEquator && inAzimuthRange) {
       discard;
