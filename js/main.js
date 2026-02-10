@@ -58,6 +58,8 @@ const material = new THREE.ShaderMaterial({
     Omega: { value: 0.3 },
     Cnl: { value: 0.03 },
     shellRadius: {value: 1 },
+    planeType: { value: 0 },  // 0 = sphere
+    starGroupRotationY: { value: 0.0 },  // Y-axis rotation of starGroup
     enableCutaway: { value: false },
     cutDir: { value: new THREE.Vector3(1, 0, 0) },
   },
@@ -65,7 +67,7 @@ const material = new THREE.ShaderMaterial({
   fragmentShader
 });
 material.uniforms.shellRadius.value = 1.0;
-material.transparent = true;
+material.transparent = false;
 material.opacity = 1.0;
 material.depthWrite = true;
 material.side = THREE.DoubleSide;
@@ -97,7 +99,7 @@ const equatorialMat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: true,
+  transparent: false,
   depthWrite: false,
   depthTest: true,
   polygonOffset: true,
@@ -106,6 +108,7 @@ const equatorialMat = new THREE.ShaderMaterial({
   side: THREE.DoubleSide
 });
 equatorialMat.uniforms.shellRadius.value = 0.5;  // Mark as plane
+equatorialMat.uniforms.planeType.value = 3;  // Equatorial plane
 oscillationMaterials.push(equatorialMat);
 
 const equatorialPlane = new THREE.Mesh(equatorialGeo, equatorialMat);
@@ -122,15 +125,13 @@ const meridional1Mat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: true,
+  transparent: false,
   depthWrite: false,
   depthTest: true,
-  polygonOffset: true,
-  polygonOffsetFactor: -2,
-  polygonOffsetUnits: -2,
-  side: THREE.FrontSide
+  side: THREE.DoubleSide
 });
 meridional1Mat.uniforms.shellRadius.value = 0.5;
+meridional1Mat.uniforms.planeType.value = 1;  // Meridional1 plane (XY, no rotation)
 oscillationMaterials.push(meridional1Mat);
 
 const meridional1Plane = new THREE.Mesh(meridional1Geo, meridional1Mat);
@@ -139,26 +140,24 @@ meridional1Plane.renderOrder = 1;
 planes.push(meridional1Plane);
 starGroup.add(meridional1Plane);
 
-// Plane at phi=90deg (YZ plane, normal along +X)  
+// Plane backwards in rotation direction
 const meridional2Geo = new THREE.PlaneGeometry(planeDepth, planeDepth, 256, 256);
 const meridional2Mat = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(material.uniforms),
   vertexShader: planeVertexShader,
   fragmentShader: fragmentShader,
-  transparent: true,
+  transparent: false,
   depthWrite: false,
   depthTest: true,
-  polygonOffset: true,
-  polygonOffsetFactor: -2,
-  polygonOffsetUnits: -2,
   side: THREE.DoubleSide
 });
 meridional2Mat.uniforms.shellRadius.value = 0.5;
+meridional2Mat.uniforms.planeType.value = 2;  // Meridional2 plane (YZ, rotated -90° around Y)
 oscillationMaterials.push(meridional2Mat);
 
 const meridional2Plane = new THREE.Mesh(meridional2Geo, meridional2Mat);
-// Rotate 90deg around Y to get YZ plane (normal along X)
-meridional2Plane.rotation.y = - Math.PI / 2;
+// Rotate 90deg around Y to get YZ plane (normal along +X) at phi=90°
+meridional2Plane.rotation.y = -Math.PI / 2;
 meridional2Plane.visible = false;
 meridional2Plane.renderOrder = 1;
 planes.push(meridional2Plane);
@@ -497,7 +496,7 @@ yAxisLine.visible = false;
 edgeGroup.add(yAxisLine);
 
 
-// Function to calculate displacement at a given position
+// Function to calculate displacement at a given position (in local star frame)
 function calculateDisplacement(position) {
   const dir = new THREE.Vector3(position.x, position.y, position.z).normalize();
   const rRadial = position.length();
@@ -701,8 +700,20 @@ let starRotationSpeed = 0.001;
 function animate() {
   oscillationMaterials.forEach(mat => {
     mat.uniforms.time.value += 0.02;
+    mat.uniforms.starGroupRotationY.value = starGroup.rotation.y;
   });
-  starRotationSpeed = +starRotSlider.value;
+  
+  // Use manual rotation slider if set, otherwise link to Omega
+  const manualRotation = +starRotSlider.value;
+  if (Math.abs(manualRotation) > 0.0001) {
+    // Manual mode: use slider value
+    starRotationSpeed = manualRotation;
+  } else {
+    // Automatic mode: link visual rotation to physical rotation rate (Omega)
+    // Scale Omega to a reasonable visual rotation speed
+    const Omega = material.uniforms.Omega.value;
+    starRotationSpeed = Omega * 0.01; // Scale factor for visual effect
+  }
   starGroup.rotation.y += starRotationSpeed;
 
   if (document.getElementById('cutawayToggle').checked) {

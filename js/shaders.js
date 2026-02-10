@@ -18,6 +18,8 @@ uniform float phase[MAX_MODES];
 uniform float Omega;   // rotation rate
 uniform float Cnl;     // Ledoux constant
 uniform float shellRadius;
+uniform int planeType;  // 0=sphere, 1=meridional1, 2=meridional2, 3=equatorial
+uniform float starGroupRotationY;  // Current Y rotation of starGroup
 
 uniform bool enableCutaway;
 uniform vec3 cutDir;
@@ -125,26 +127,30 @@ void main() {
   // We only care about the mesh's orientation, not camera view
   vec3 transformedNormal = normalize(mat3(modelMatrix) * normal);
 
-  if (isPlane) {
-  // World-space position of plane point
+  // Get world-space position (includes both plane rotation and starGroup rotation)
   vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
-
-  rRadial = length(worldPos);
-  rNorm   = rRadial / 100.0;
-
-  // Direction from center – THIS is what spherical harmonics care about
-  dir = normalize(worldPos);
-
+  
+  // Undo the starGroup Y-axis rotation to get position in star-local frame
+  // Rotation matrix for rotation around Y axis by angle theta:
+  // [ cos(theta)  0  sin(theta) ]
+  // [     0       1      0      ]
+  // [-sin(theta)  0  cos(theta) ]
+  // 
+  // To undo rotation by starGroupRotationY, we rotate by -starGroupRotationY
+  float c = cos(-starGroupRotationY);
+  float s = sin(-starGroupRotationY);
+  
+  vec3 starLocalPos = vec3(
+    c * worldPos.x + s * worldPos.z,
+    worldPos.y,
+    -s * worldPos.x + c * worldPos.z
+  );
+  
+  rRadial = length(starLocalPos);
+  rNorm = rRadial / 100.0;
+  dir = normalize(starLocalPos);
   theta = acos(clamp(dir.y, -1.0, 1.0));
-  phi   = atan(dir.z, dir.x);
-  } else {
-    // Full sphere
-    rRadial = length(pos);
-    rNorm = rRadial / 100.0;
-    dir = normalize(pos);
-    theta = acos(clamp(dir.y, -1.0, 1.0));
-    phi = atan(dir.z, dir.x);
-  }
+  phi = atan(starLocalPos.z, starLocalPos.x);
 
   float dr = 0.0;
 
@@ -169,10 +175,22 @@ void main() {
   // Don't displace the planes - they stay flat
   // Only displace the sphere
   if (!isPlane) {
-    pos = dir * (rRadial + 5.0 * dr);
+    // For sphere: pos is in mesh-local coords (same as star-local for sphere)
+    // Displace along the original position direction
+    vec3 meshDir = normalize(pos);
+    float meshRadius = length(pos);
+    pos = meshDir * (meshRadius + 5.0 * dr);
   }
 
-  vWorldPos = pos;
+  // vWorldPos should be the actual world position for fragment shader clipping
+  // For sphere: need to recalculate world pos after displacement
+  // For planes: use the original worldPos
+  if (!isPlane) {
+    vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+  } else {
+    vWorldPos = worldPos;
+  }
+  
   vDir = dir;
   vSphereRadius = 100.0 + 5.0 * dr;
 
@@ -196,16 +214,18 @@ void main() {
   
   // For planes: clip to oscillating spherical boundary and wedge region
   if (isPlane) {
+    // Use vWorldPos for radius check (it has the oscillating radius)
     if (length(vWorldPos) > vSphereRadius) discard;
     
-    // Check if above equator (northern hemisphere)
-    bool aboveEquator = vWorldPos.y > 0.0;
+    // Use vDir (local coordinates) for wedge clipping so it rotates with star
+    // Check if above or at equator (northern hemisphere + equator) in LOCAL frame
+    bool aboveEquator = vDir.y >= -0.01;  // Small tolerance for equatorial plane
     
-    // Calculate azimuthal angle in XZ plane
-    float phi = atan(vWorldPos.z, vWorldPos.x);
+    // Calculate azimuthal angle in XZ plane in LOCAL frame
+    float phi = atan(vDir.z, vDir.x);
     if (phi < 0.0) phi += 6.28318530718;
 
-    bool inAzimuthRange = (phi >= 0.0 && phi <= 1.5708);
+    bool inAzimuthRange = (phi >= -0.05 && phi <= 1.62);  // Extra tolerance on both sides
     
     if (!aboveEquator || !inAzimuthRange) {
       discard;
