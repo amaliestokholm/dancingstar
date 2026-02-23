@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Asteroseismic Oscillations</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: transparent; font-family: monospace; }
+    
+    #globeViz {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0; left: 0;
+    }
+
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(0,0,0,0.6);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    #controls label { margin: 0; }
+
+    #controls input[type="range"] {
+      width: 100px;
+      vertical-align: middle;
+    }
+
+    .value {
+      display: inline-block;
+      width: 20px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+<div id="globeViz"></div>
+
+<div id="controls">
+  <label>
+    n = <span class="value" id="nVal">2</span>
+    <input id="n" type="range" min="1" max="8" value="2">
+  </label>
+  <label>
+    ℓ = <span class="value" id="lVal">0</span>
+    <input id="l" type="range" min="0" max="8" value="0">
+  </label>
+  <label>
+    m = <span class="value" id="mVal">0</span>
+    <input id="m" type="range" min="-8" max="8" value="0">
+  </label>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
