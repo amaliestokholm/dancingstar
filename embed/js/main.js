@@ -2,8 +2,8 @@ import * as THREE from 'https://esm.sh/three';
 import { vertexShader, fragmentShader } from './shaders.js';
 
 const container = document.getElementById('globeViz');
-const width = container.clientWidth;
-const height = container.clientHeight;
+const width = container.clientWidth || 500;
+const height = container.clientHeight || 450;
 
 // Scene, camera, renderer
 const scene = new THREE.Scene();
