@@ -114,10 +114,10 @@ const planes       = [equatorialPlane, meridional1Plane, meridional2Plane];
 const allMaterials = [material, equatorialMat, meridional1Mat, meridional2Mat];
 
 // Grid
-const gridGroup  = new THREE.Group();
+const gridGroup      = new THREE.Group();
 starGroup.add(gridGroup);
 
-const gridMat    = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+const gridMat        = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
 const equatorLineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
 
 function makeLatitudeRing(latDeg, radius = 105) {
@@ -156,6 +156,154 @@ starGroup.add(new THREE.ArrowHelper(
   new THREE.Vector3(0, -120, 0),
   264, 0xff4444, 14, 8
 ));
+
+// --- Edge lines (black outline of the cutaway) ---
+const edgeGroup = new THREE.Group();
+edgeGroup.renderOrder = 2;
+starGroup.add(edgeGroup);
+
+const edgeLineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+const intersectionMat = new THREE.LineBasicMaterial({
+  color: 0x000000, linewidth: 1,
+  transparent: true, opacity: 0.7,
+  depthTest: true, depthWrite: false
+});
+
+const numEdgePoints = 100;
+
+function makeLineGeo(n) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  return geo;
+}
+
+const equatorialEdgeGeo  = makeLineGeo(numEdgePoints);
+const meridional1EdgeGeo = makeLineGeo(numEdgePoints);
+const meridional2EdgeGeo = makeLineGeo(numEdgePoints);
+const xAxisGeo           = makeLineGeo(2);
+const zAxisGeo           = makeLineGeo(2);
+const yAxisGeo           = makeLineGeo(2);
+
+const equatorialEdgeLine  = new THREE.Line(equatorialEdgeGeo,  edgeLineMat);
+const meridional1EdgeLine = new THREE.Line(meridional1EdgeGeo, edgeLineMat);
+const meridional2EdgeLine = new THREE.Line(meridional2EdgeGeo, edgeLineMat);
+const xAxisLine           = new THREE.Line(xAxisGeo,           intersectionMat);
+const zAxisLine           = new THREE.Line(zAxisGeo,           intersectionMat);
+const yAxisLine           = new THREE.Line(yAxisGeo,           intersectionMat);
+
+[equatorialEdgeLine, meridional1EdgeLine, meridional2EdgeLine,
+ xAxisLine, zAxisLine, yAxisLine].forEach(line => {
+  line.visible = false;
+  edgeGroup.add(line);
+});
+
+// --- JS math (mirrors the GLSL, needed for edge line displacement) ---
+function factorial(n) {
+  let f = 1.0;
+  for (let i = 1; i <= n; i++) f *= i;
+  return f;
+}
+
+function legendreP(l, m, x) {
+  let pmm = 1.0;
+  if (m > 0) {
+    const somx2 = Math.sqrt((1.0 - x) * (1.0 + x));
+    let fact = 1.0;
+    for (let i = 1; i <= m; i++) { pmm *= -fact * somx2; fact += 2.0; }
+  }
+  if (l === m) return pmm;
+  let pmmp1 = x * (2.0 * m + 1.0) * pmm;
+  if (l === m + 1) return pmmp1;
+  let pll = 0.0;
+  for (let ll = m + 2; ll <= l; ll++) {
+    pll = ((2.0 * ll - 1.0) * x * pmmp1 - (ll + m - 1) * pmm) / (ll - m);
+    pmm = pmmp1; pmmp1 = pll;
+  }
+  return pll;
+}
+
+function norm(l, m) {
+  return Math.sqrt((2.0 * l + 1.0) / (4.0 * Math.PI) * factorial(l - m) / factorial(l + m));
+}
+
+function sphericalHarmonic(l, m, theta, phi) {
+  const x  = Math.cos(theta);
+  const mm = Math.abs(m);
+  const P  = legendreP(l, mm, x);
+  const N  = norm(l, mm);
+  if (m > 0) return Math.sqrt(2.0) * N * P * Math.cos(mm * phi);
+  if (m < 0) return Math.sqrt(2.0) * N * P * Math.sin(mm * phi);
+  return N * P;
+}
+
+function calculateDisplacement(position) {
+  const dir   = position.clone().normalize();
+  const rNorm = position.length() / 100.0;
+  const theta = Math.acos(Math.max(-1, Math.min(1, dir.y)));
+  const phi   = Math.atan2(dir.z, dir.x);
+
+  let dr = 0.0;
+  const t       = material.uniforms.time.value;
+  const Omega   = material.uniforms.Omega.value;
+  const Cnl     = material.uniforms.Cnl.value;
+
+  for (const mode of modes) {
+    const R_nl        = Math.sin((mode.n + 0.5) * Math.PI * rNorm);
+    const phiRotating = phi + mode.m * Omega * (1.0 - Cnl) * t;
+    const Y_lm        = sphericalHarmonic(mode.l, mode.m, theta, phiRotating);
+    dr += mode.amp * R_nl * Y_lm * Math.cos(mode.omega * t + mode.phase);
+  }
+  return dr;
+}
+
+function updateEdgeLines() {
+  // Equatorial arc: phi 0 → 90°, y = 0
+  const eqPos = equatorialEdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const angle  = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const base   = new THREE.Vector3(100 * Math.cos(angle), 0, 100 * Math.sin(angle));
+    const dr     = calculateDisplacement(base);
+    const newPos = base.normalize().multiplyScalar(100 + 5.0 * dr + 0.2);
+    eqPos[i * 3] = newPos.x; eqPos[i * 3 + 1] = newPos.y; eqPos[i * 3 + 2] = newPos.z;
+  }
+  equatorialEdgeGeo.attributes.position.needsUpdate = true;
+
+  // Meridional arc at phi = 0 (north pole → equator)
+  const m1Pos = meridional1EdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const theta  = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const base   = new THREE.Vector3(100 * Math.sin(theta), 100 * Math.cos(theta), 0);
+    const dr     = calculateDisplacement(base);
+    const newPos = base.normalize().multiplyScalar(100 + 5.0 * dr + 0.2);
+    m1Pos[i * 3] = newPos.x; m1Pos[i * 3 + 1] = newPos.y; m1Pos[i * 3 + 2] = newPos.z;
+  }
+  meridional1EdgeGeo.attributes.position.needsUpdate = true;
+
+  // Meridional arc at phi = 90° (north pole → equator)
+  const m2Pos = meridional2EdgeGeo.attributes.position.array;
+  for (let i = 0; i < numEdgePoints; i++) {
+    const theta  = (i / (numEdgePoints - 1)) * Math.PI / 2;
+    const base   = new THREE.Vector3(0, 100 * Math.cos(theta), 100 * Math.sin(theta));
+    const dr     = calculateDisplacement(base);
+    const newPos = base.normalize().multiplyScalar(100 + 5.0 * dr + 0.2);
+    m2Pos[i * 3] = newPos.x; m2Pos[i * 3 + 1] = newPos.y; m2Pos[i * 3 + 2] = newPos.z;
+  }
+  meridional2EdgeGeo.attributes.position.needsUpdate = true;
+
+  // Axis lines from centre to oscillating surface
+  function updateAxisLine(geo, baseVec) {
+    const dr     = calculateDisplacement(baseVec);
+    const end    = baseVec.clone().normalize().multiplyScalar(100 + 5.0 * dr);
+    const pos    = geo.attributes.position.array;
+    pos[0] = 0; pos[1] = 0; pos[2] = 0;
+    pos[3] = end.x; pos[4] = end.y; pos[5] = end.z;
+    geo.attributes.position.needsUpdate = true;
+  }
+
+  updateAxisLine(xAxisGeo, new THREE.Vector3(100, 0,   0));
+  updateAxisLine(zAxisGeo, new THREE.Vector3(0,   0, 100));
+  updateAxisLine(yAxisGeo, new THREE.Vector3(0, 100,   0));
+}
 
 // --- Mode state ---
 const modes = [{ n: 2, l: 0, m: 0, amp: 1.5, omega: 1.0, phase: 0.0 }];
@@ -209,6 +357,7 @@ document.getElementById('cutawayToggle').onchange = e => {
   const enabled = e.target.checked;
   allMaterials.forEach(mat => { mat.uniforms.enableCutaway.value = enabled; });
   planes.forEach(plane => { plane.visible = enabled; });
+  edgeGroup.children.forEach(line => { line.visible = enabled; });
 };
 
 // Initialise
@@ -224,6 +373,9 @@ function animate() {
     mat.uniforms.time.value += 0.02;
     mat.uniforms.starGroupRotationY.value = starGroup.rotation.y;
   });
+  if (document.getElementById('cutawayToggle').checked) {
+    updateEdgeLines();
+  }
   orbitControls.update();
   renderer.render(scene, camera);
   animationId = requestAnimationFrame(animate);
